@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { Poppins } from "next/font/google";
 import {
   ArrowUpRight,
@@ -53,6 +54,7 @@ function AvatarStack() {
 
 export default function DashboardMain() {
   const { user } = useUser();
+  const { isLoaded, isSignedIn, userId, getToken } = useAuth();
 
   const [stats, setStats] = useState<DashboardStats>({
     completed: 0,
@@ -63,13 +65,39 @@ export default function DashboardMain() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log("CLERK CLIENT:", {
+      isLoaded,
+      isSignedIn,
+      userId,
+      user: user?.id,
+    });
+  }, [isLoaded, isSignedIn, userId, user]);
+
+  useEffect(() => {
     async function getDashboard() {
+      if (!isLoaded || !isSignedIn) {
+        return;
+      }
+
       try {
+        const token = await getToken();
+
+        if (!token) {
+          console.log("Dashboard: Clerk token unavailable");
+          return;
+        }
+
         const response = await fetch("/api/dashboard", {
           cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.log("Dashboard API error:", response.status);
+          return;
+        }
 
         const data = await response.json();
 
@@ -79,14 +107,14 @@ export default function DashboardMain() {
           active: Number(data.active) || 0,
         });
       } catch (error) {
-        console.log(error);
+        console.log("Dashboard fetch error:", error);
       } finally {
         setLoading(false);
       }
     }
 
     getDashboard();
-  }, []);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const score = Math.min(Math.max(stats.score, 0), 100);
 
@@ -120,11 +148,7 @@ export default function DashboardMain() {
           <Link href="/resumeanalyzer">
             <div className="group relative h-[118px] overflow-hidden rounded-[24px] bg-[#cfe4e4] p-4 transition duration-300 hover:-translate-y-1">
               <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold">
-                <Star
-                  size={10}
-                  fill="#e7c85d"
-                  strokeWidth={0}
-                />
+                <Star size={10} fill="#e7c85d" strokeWidth={0} />
                 4.9
               </div>
 
@@ -149,11 +173,7 @@ export default function DashboardMain() {
           <Link href="/dashboard/interview">
             <div className="group relative h-[118px] overflow-hidden rounded-[24px] bg-[#f4c7df] p-4 transition duration-300 hover:-translate-y-1">
               <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold">
-                <Star
-                  size={10}
-                  fill="#e7c85d"
-                  strokeWidth={0}
-                />
+                <Star size={10} fill="#e7c85d" strokeWidth={0} />
                 4.8
               </div>
 
@@ -313,3 +333,4 @@ export default function DashboardMain() {
     </main>
   );
 }
+

@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -11,6 +12,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Poppins } from "next/font/google";
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+});
 
 const routes = [
   {
@@ -59,7 +66,6 @@ export default function DashboardSidebar() {
       <nav className="flex flex-col items-center gap-[calc(48px-0.5cm)] pt-[2cm]">
         {routes.map((route) => {
           const Icon = route.icon;
-
           const isActive =
             pathname === route.href ||
             (route.href !== "/resumeanalyzer" &&
@@ -87,7 +93,9 @@ export default function DashboardSidebar() {
             >
               <Icon size={27} strokeWidth={2} />
 
-              <span className="pointer-events-none absolute left-[68px] z-50 hidden whitespace-nowrap rounded-lg bg-black px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block">
+              <span
+                className={`${poppins.className} pointer-events-none absolute left-[68px] z-50 hidden whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-gray-800 shadow-md ring-1 ring-gray-100 group-hover:block`}
+              >
                 {route.label}
               </span>
             </Link>
@@ -107,7 +115,9 @@ export default function DashboardSidebar() {
         >
           <Settings size={27} strokeWidth={2} />
 
-          <span className="pointer-events-none absolute left-[68px] z-50 hidden whitespace-nowrap rounded-lg bg-black px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block">
+          <span
+            className={`${poppins.className} pointer-events-none absolute left-[68px] z-50 hidden whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-gray-800 shadow-md ring-1 ring-gray-100 group-hover:block`}
+          >
             Settings
           </span>
         </Link>
@@ -115,3 +125,4 @@ export default function DashboardSidebar() {
     </aside>
   );
 }
+

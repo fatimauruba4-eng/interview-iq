@@ -1,9 +1,26 @@
+"use client";
+
+import { useEffect } from "react";
+import { useAuth } from "@clerk/nextjs";
+
 import DashboardMobileSidebar from "@/components/ui/dashboardmobilesidebar";
 import DashboardSidebar from "@/components/dashboard/dashboardsidebar";
 import DashboardRightPanel from "@/components/dashboard/DashboardRightPanel";
 import DashboardMain from "@/components/dashboard/DashboardMain";
 
 export default function DashboardPage() {
+  const { isLoaded, isSignedIn, userId } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    console.log("CLERK CLIENT FINAL:", {
+      isLoaded,
+      isSignedIn,
+      userId,
+    });
+  }, [isLoaded, isSignedIn, userId]);
+
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-no-repeat px-5 pt-[92px] pb-[60px]"
