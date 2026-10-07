@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Poppins } from "next/font/google";
@@ -17,7 +18,8 @@ import {
   Sparkles,
   Settings,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -112,6 +114,7 @@ function MiniAvatarStack() {
           </div>
         ))}
       </div>
+
       <span className="ml-1 rounded-full bg-white px-1.5 py-1 text-[10px] font-semibold">
         +6
       </span>
@@ -121,6 +124,7 @@ function MiniAvatarStack() {
 
 export default function DashboardRightPanel() {
   const router = useRouter();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
 
   const [profile, setProfile] = useState({
     username: "",
@@ -130,56 +134,137 @@ export default function DashboardRightPanel() {
 
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
+
   const [selectedInterview, setSelectedInterview] =
     useState<Interview | null>(null);
+
   const [role, setRole] = useState("");
   const [time, setTime] = useState("10:00");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    async function getDashboardData() {
-      try {
-        const profileResponse = await fetch("/api/settings");
-
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-
-          setProfile({
-            username: profileData.userName || "",
-            email: profileData.email || "",
-            preferredRole: profileData.preferredRole || "",
-          });
-        }
-
-        const interviewResponse = await fetch(
-          "/api/dashboard-right-panel"
-        );
-
-        if (interviewResponse.ok) {
-          const interviewData = await interviewResponse.json();
-          setInterviews(interviewData.interviews || []);
-        }
-
-        const scheduleResponse = await fetch(
-          "/api/interview-schedule"
-        );
-
-        if (scheduleResponse.ok) {
-          const scheduleData = await scheduleResponse.json();
-          setSchedules(scheduleData.schedules || []);
-        }
-      } catch (error) {
-        console.log(error);
-      }
+  const fetchDashboardData = useCallback(async () => {
+    if (!isLoaded || !isSignedIn) {
+      return;
     }
 
-    getDashboardData();
-  }, []);
+    try {
+      const token = await getToken();
+
+      const headers: HeadersInit = {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const [profileResponse, interviewResponse, scheduleResponse] =
+        await Promise.all([
+          fetch("/api/settings", {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+
+          fetch("/api/dashboard-right-panel", {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+
+          fetch("/api/interview-schedule", {
+            method: "GET",
+            cache: "no-store",
+            headers,
+          }),
+        ]);
+
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+
+        setProfile({
+          username:
+            profileData.userName ||
+            profileData.username ||
+            profileData.name ||
+            "",
+          email: profileData.email || "",
+          preferredRole:
+            profileData.preferredRole ||
+            profileData.preferred_role ||
+            profileData.targetrole ||
+            "",
+        });
+      }
+
+      if (interviewResponse.ok) {
+        const interviewData = await interviewResponse.json();
+
+        setInterviews(
+          Array.isArray(interviewData.interviews)
+            ? interviewData.interviews
+            : []
+        );
+      }
+
+      if (scheduleResponse.ok) {
+        const scheduleData = await scheduleResponse.json();
+
+        setSchedules(
+          Array.isArray(scheduleData.schedules)
+            ? scheduleData.schedules
+            : []
+        );
+      }
+    } catch (error) {
+      console.error("Dashboard right panel fetch error:", error);
+    }
+  }, [getToken, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      return;
+    }
+
+    fetchDashboardData();
+
+    const interval = window.setInterval(() => {
+      fetchDashboardData();
+    }, 30000);
+
+    const handleFocus = () => {
+      fetchDashboardData();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchDashboardData();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [fetchDashboardData, isLoaded, isSignedIn]);
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -214,6 +299,7 @@ export default function DashboardRightPanel() {
 
   const formatDate = (day: number) => {
     const date = new Date(year, month, day);
+
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, "0");
     const dd = String(date.getDate()).padStart(2, "0");
@@ -243,7 +329,9 @@ export default function DashboardRightPanel() {
 
     const matchingSchedules = schedules
       .filter((schedule) => {
-        if (!query) return true;
+        if (!query) {
+          return true;
+        }
 
         const searchableText = [
           schedule.role,
@@ -260,7 +348,9 @@ export default function DashboardRightPanel() {
 
     const matchingInterviews = interviews
       .filter((interview) => {
-        if (!query) return true;
+        if (!query) {
+          return true;
+        }
 
         const searchableText = [
           interview.role,
@@ -276,7 +366,9 @@ export default function DashboardRightPanel() {
 
     const matchingFeatures = sidebarFeatures
       .filter((feature) => {
-        if (!query) return true;
+        if (!query) {
+          return true;
+        }
 
         const searchableText = [
           feature.name,
@@ -375,6 +467,7 @@ export default function DashboardRightPanel() {
     setCurrentMonth(
       new Date(year, month - 1, 1)
     );
+
     setSelectedDate("");
     setSelectedInterview(null);
   };
@@ -383,6 +476,7 @@ export default function DashboardRightPanel() {
     setCurrentMonth(
       new Date(year, month + 1, 1)
     );
+
     setSelectedDate("");
     setSelectedInterview(null);
   };
@@ -595,15 +689,25 @@ export default function DashboardRightPanel() {
     setSaving(true);
 
     try {
+      const token = await getToken();
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         "/api/interview-schedule",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          cache: "no-store",
+          headers,
           body: JSON.stringify({
-            role,
+            role: role.trim(),
             scheduled_date: selectedDate,
             scheduled_time: time,
           }),
@@ -620,17 +724,25 @@ export default function DashboardRightPanel() {
         return;
       }
 
-      setSchedules((previous) => [
-        ...previous.filter(
-          (item) =>
-            item.scheduled_date !== selectedDate
-        ),
-        data.schedule,
-      ]);
+      if (data.schedule) {
+        setSchedules((previous) => [
+          ...previous.filter(
+            (item) =>
+              item.scheduled_date !== selectedDate
+          ),
+          data.schedule,
+        ]);
+      }
+
+      await fetchDashboardData();
 
       alert("Interview scheduled successfully!");
     } catch (error) {
-      console.log(error);
+      console.error(
+        "Schedule error:",
+        error
+      );
+
       alert("Something went wrong.");
     } finally {
       setSaving(false);
@@ -642,7 +754,9 @@ export default function DashboardRightPanel() {
       !hasSearch ||
       interview.role
         .toLowerCase()
-        .includes(searchQuery.toLowerCase())
+        .includes(
+          searchQuery.toLowerCase()
+        )
   );
 
   const selectedDateLabel = selectedDate
@@ -658,7 +772,7 @@ export default function DashboardRightPanel() {
 
   return (
     <aside
-      className={`${poppins.className} w-[34%] min-w-[320px] max-w-[390px] shrink-0 border-l border-black/[0.035] bg-[#f5f5f3] px-6 py-7`} 
+      className={`${poppins.className} w-[34%] min-w-[320px] max-w-[390px] shrink-0 border-l border-black/[0.035] bg-[#f5f5f3] px-6 py-7`}
     >
       <div className="relative">
         <div className="flex items-center gap-3">
@@ -749,8 +863,8 @@ export default function DashboardRightPanel() {
                 </p>
 
                 <p className="mt-1 text-[10px] text-gray-500">
-                  Try a role, feature name, date, or
-                  status.
+                  Try a role, feature name, date,
+                  or status.
                 </p>
               </div>
             ) : (
@@ -775,9 +889,7 @@ export default function DashboardRightPanel() {
                             className="flex w-full items-center gap-2.5 rounded-[15px] bg-[#d2e5e5] p-2.5 text-left transition hover:-translate-y-0.5"
                           >
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white">
-                              <CalendarDays
-                                size={12}
-                              />
+                              <CalendarDays size={12} />
                             </div>
 
                             <div className="min-w-0 flex-1">
@@ -803,7 +915,9 @@ export default function DashboardRightPanel() {
                               </p>
                             </div>
 
-                            <ArrowUpRight size={11} />
+                            <ArrowUpRight
+                              size={11}
+                            />
                           </button>
                         )
                       )}
@@ -820,7 +934,10 @@ export default function DashboardRightPanel() {
 
                     <div className="space-y-1.5">
                       {suggestionResults.interviews.map(
-                        (interview, index) => (
+                        (
+                          interview,
+                          index
+                        ) => (
                           <button
                             key={`${interview.created_at}-${index}`}
                             onClick={() =>
@@ -845,7 +962,9 @@ export default function DashboardRightPanel() {
                               </p>
                             </div>
 
-                            <ArrowUpRight size={11} />
+                            <ArrowUpRight
+                              size={11}
+                            />
                           </button>
                         )
                       )}
@@ -863,7 +982,8 @@ export default function DashboardRightPanel() {
                     <div className="space-y-1.5">
                       {suggestionResults.features.map(
                         (feature) => {
-                          const Icon = feature.icon;
+                          const Icon =
+                            feature.icon;
 
                           return (
                             <button
@@ -885,11 +1005,15 @@ export default function DashboardRightPanel() {
                                 </p>
 
                                 <p className="mt-0.5 truncate text-[10px] text-gray-500">
-                                  {feature.description}
+                                  {
+                                    feature.description
+                                  }
                                 </p>
                               </div>
 
-                              <ArrowUpRight size={11} />
+                              <ArrowUpRight
+                                size={11}
+                              />
                             </button>
                           );
                         }
@@ -936,8 +1060,8 @@ export default function DashboardRightPanel() {
 
               <p className="mt-1 text-[11px] text-gray-500">
                 No scheduled interviews, recent
-                interviews, or sidebar features match
-                your search.
+                interviews, or sidebar features
+                match your search.
               </p>
 
               <button
@@ -949,7 +1073,8 @@ export default function DashboardRightPanel() {
             </div>
           ) : (
             <div className="mt-3 space-y-3">
-              {searchResults.schedules.length > 0 && (
+              {searchResults.schedules.length >
+                0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <CalendarDays size={12} />
@@ -999,7 +1124,9 @@ export default function DashboardRightPanel() {
                             </p>
                           </div>
 
-                          <ArrowUpRight size={12} />
+                          <ArrowUpRight
+                            size={12}
+                          />
                         </button>
                       )
                     )}
@@ -1007,7 +1134,8 @@ export default function DashboardRightPanel() {
                 </div>
               )}
 
-              {searchResults.interviews.length > 0 && (
+              {searchResults.interviews.length >
+                0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <BookOpen size={12} />
@@ -1020,58 +1148,66 @@ export default function DashboardRightPanel() {
                   <div className="space-y-2.5">
                     {searchResults.interviews
                       .slice(0, 5)
-                      .map((interview, index) => (
-                        <button
-                          key={`${interview.created_at}-${index}`}
-                          onClick={() =>
-                            handleInterviewResultClick(
-                              interview
-                            )
-                          }
-                          className={`flex w-full items-center gap-3 rounded-[18px] bg-[#f4c7df] p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
-                            selectedInterview?.created_at ===
-                              interview.created_at &&
-                            selectedInterview?.role ===
-                              interview.role
-                              ? "ring-2 ring-black/10"
-                              : ""
-                          }`}
-                        >
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white">
-                            <BookOpen size={13} />
-                          </div>
+                      .map(
+                        (
+                          interview,
+                          index
+                        ) => (
+                          <button
+                            key={`${interview.created_at}-${index}`}
+                            onClick={() =>
+                              handleInterviewResultClick(
+                                interview
+                              )
+                            }
+                            className={`flex w-full items-center gap-3 rounded-[18px] bg-[#f4c7df] p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                              selectedInterview?.created_at ===
+                                interview.created_at &&
+                              selectedInterview?.role ===
+                                interview.role
+                                ? "ring-2 ring-black/10"
+                                : ""
+                            }`}
+                          >
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white">
+                              <BookOpen size={13} />
+                            </div>
 
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[11px] font-semibold">
-                              {interview.role}
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] font-semibold">
+                                {interview.role}
+                              </p>
 
-                            <p className="mt-1 text-[11px] text-gray-600">
-                              {new Date(
-                                interview.created_at
-                              ).toLocaleDateString(
-                                undefined,
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                }
-                              )}
-                            </p>
-                          </div>
+                              <p className="mt-1 text-[11px] text-gray-600">
+                                {new Date(
+                                  interview.created_at
+                                ).toLocaleDateString(
+                                  undefined,
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  }
+                                )}
+                              </p>
+                            </div>
 
-                          <div className="rounded-full bg-white px-2.5 py-1.5 text-[9px] font-semibold">
-                            {interview.score}%
-                          </div>
+                            <div className="rounded-full bg-white px-2.5 py-1.5 text-[9px] font-semibold">
+                              {interview.score}%
+                            </div>
 
-                          <ArrowUpRight size={12} />
-                        </button>
-                      ))}
+                            <ArrowUpRight
+                              size={12}
+                            />
+                          </button>
+                        )
+                      )}
                   </div>
                 </div>
               )}
 
-              {searchResults.features.length > 0 && (
+              {searchResults.features.length >
+                0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Sparkles size={12} />
@@ -1084,7 +1220,8 @@ export default function DashboardRightPanel() {
                   <div className="space-y-2.5">
                     {searchResults.features.map(
                       (feature) => {
-                        const Icon = feature.icon;
+                        const Icon =
+                          feature.icon;
 
                         return (
                           <button
@@ -1106,11 +1243,15 @@ export default function DashboardRightPanel() {
                               </p>
 
                               <p className="mt-1 text-[11px] text-gray-500">
-                                {feature.description}
+                                {
+                                  feature.description
+                                }
                               </p>
                             </div>
 
-                            <ArrowUpRight size={12} />
+                            <ArrowUpRight
+                              size={12}
+                            />
                           </button>
                         );
                       }
@@ -1180,7 +1321,9 @@ export default function DashboardRightPanel() {
 
       <div
         id="interview-calendar"
-        className={hasSearch ? "mt-5" : "mt-8"}
+        className={
+          hasSearch ? "mt-5" : "mt-8"
+        }
       >
         <div className="flex items-center justify-between">
           <h2 className="text-[25px] font-semibold tracking-[-0.8px] text-[#151515]">
@@ -1231,52 +1374,57 @@ export default function DashboardRightPanel() {
           </div>
 
           <div className="mt-4 grid grid-cols-7 gap-y-2.5 text-center">
-            {calendarDays.map((day, index) => {
-              if (!day) {
+            {calendarDays.map(
+              (day, index) => {
+                if (!day) {
+                  return (
+                    <div
+                      key={`empty-${index}`}
+                      className="h-8"
+                    />
+                  );
+                }
+
+                const date = formatDate(day);
+
+                const isSelected =
+                  selectedDate === date;
+
+                const isScheduled =
+                  scheduledDates.includes(
+                    date
+                  );
+
                 return (
-                  <div
-                    key={`empty-${index}`}
-                    className="h-8"
-                  />
+                  <button
+                    key={date}
+                    onClick={() =>
+                      handleDateClick(day)
+                    }
+                    className="relative mx-auto flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
+                  >
+                    {isScheduled &&
+                      !isSelected && (
+                        <span className="absolute inset-0 rounded-full bg-[#d2e5e5]" />
+                      )}
+
+                    {isSelected && (
+                      <span className="absolute inset-0 rounded-full bg-black" />
+                    )}
+
+                    <span
+                      className={`relative z-10 text-[15px] font-medium ${
+                        isSelected
+                          ? "text-white"
+                          : "text-gray-700"
+                      }`}
+                    >
+                      {day}
+                    </span>
+                  </button>
                 );
               }
-
-              const date = formatDate(day);
-
-              const isSelected =
-                selectedDate === date;
-
-              const isScheduled =
-                scheduledDates.includes(date);
-
-              return (
-                <button
-                  key={date}
-                  onClick={() =>
-                    handleDateClick(day)
-                  }
-                  className="relative mx-auto flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-gray-100"
-                >
-                  {isScheduled && !isSelected && (
-                    <span className="absolute inset-0 rounded-full bg-[#d2e5e5]" />
-                  )}
-
-                  {isSelected && (
-                    <span className="absolute inset-0 rounded-full bg-black" />
-                  )}
-
-                  <span
-                    className={`relative z-10 text-[15px] font-medium ${
-                      isSelected
-                        ? "text-white"
-                        : "text-gray-700"
-                    }`}
-                  >
-                    {day}
-                  </span>
-                </button>
-              );
-            })}
+            )}
           </div>
         </div>
       </div>
@@ -1448,8 +1596,8 @@ export default function DashboardRightPanel() {
 
                   {!hasSearch && (
                     <p className="mt-1 text-[12px] text-gray-500">
-                      Completed interviews will appear
-                      here.
+                      Completed interviews will
+                      appear here.
                     </p>
                   )}
                 </div>
@@ -1458,53 +1606,55 @@ export default function DashboardRightPanel() {
           ) : (
             filteredInterviews
               .slice(0, 5)
-              .map((interview, index) => (
-                <button
-                  key={`${interview.created_at}-${index}`}
-                  onClick={() =>
-                    handleInterviewResultClick(
-                      interview
-                    )
-                  }
-                  className={`flex min-h-[80px] w-full items-center gap-3 rounded-[21px] bg-[#f4c7df] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
-                    selectedInterview?.created_at ===
-                      interview.created_at &&
-                    selectedInterview?.role ===
-                      interview.role
-                      ? "ring-2 ring-black/10"
-                      : ""
-                  }`}
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white">
-                    <BookOpen size={15} />
-                  </div>
+              .map(
+                (interview, index) => (
+                  <button
+                    key={`${interview.created_at}-${index}`}
+                    onClick={() =>
+                      handleInterviewResultClick(
+                        interview
+                      )
+                    }
+                    className={`flex min-h-[80px] w-full items-center gap-3 rounded-[21px] bg-[#f4c7df] p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
+                      selectedInterview?.created_at ===
+                        interview.created_at &&
+                      selectedInterview?.role ===
+                        interview.role
+                        ? "ring-2 ring-black/10"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white">
+                      <BookOpen size={15} />
+                    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold">
-                      {interview.role}
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold">
+                        {interview.role}
+                      </p>
 
-                    <p className="mt-1 text-[12px] text-gray-600">
-                      {new Date(
-                        interview.created_at
-                      ).toLocaleDateString(
-                        undefined,
-                        {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        }
-                      )}
-                    </p>
-                  </div>
+                      <p className="mt-1 text-[12px] text-gray-600">
+                        {new Date(
+                          interview.created_at
+                        ).toLocaleDateString(
+                          undefined,
+                          {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          }
+                        )}
+                      </p>
+                    </div>
 
-                  <div className="rounded-full bg-white px-3 py-2 text-[11px] font-semibold shadow-sm">
-                    {interview.score}%
-                  </div>
+                    <div className="rounded-full bg-white px-3 py-2 text-[11px] font-semibold shadow-sm">
+                      {interview.score}%
+                    </div>
 
-                  <ArrowUpRight size={13} />
-                </button>
-              ))
+                    <ArrowUpRight size={13} />
+                  </button>
+                )
+              )
           )}
         </div>
       </div>
@@ -1520,3 +1670,4 @@ export default function DashboardRightPanel() {
     </aside>
   );
 }
+

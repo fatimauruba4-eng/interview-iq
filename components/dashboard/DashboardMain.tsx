@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { Poppins } from "next/font/google";
@@ -54,7 +53,7 @@ function AvatarStack() {
 
 export default function DashboardMain() {
   const { user } = useUser();
-  const { isLoaded, isSignedIn, userId, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
 
   const [stats, setStats] = useState<DashboardStats>({
     completed: 0,
@@ -64,57 +63,71 @@ export default function DashboardMain() {
 
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    console.log("CLERK CLIENT:", {
-      isLoaded,
-      isSignedIn,
-      userId,
-      user: user?.id,
-    });
-  }, [isLoaded, isSignedIn, userId, user]);
+  const getDashboard = useCallback(async () => {
+    if (!isLoaded || !isSignedIn) {
+      return;
+    }
 
-  useEffect(() => {
-    async function getDashboard() {
-      if (!isLoaded || !isSignedIn) {
+    try {
+      setLoading(true);
+
+      const token = await getToken();
+
+      if (!token) {
+        console.log("Dashboard: Clerk token unavailable");
         return;
       }
 
-      try {
-        const token = await getToken();
+      const response = await fetch("/api/dashboard", {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Cache-Control": "no-cache",
+        },
+      });
 
-        if (!token) {
-          console.log("Dashboard: Clerk token unavailable");
-          return;
-        }
-
-        const response = await fetch("/api/dashboard", {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          console.log("Dashboard API error:", response.status);
-          return;
-        }
-
-        const data = await response.json();
-
-        setStats({
-          completed: Number(data.completed) || 0,
-          score: Number(data.score) || 0,
-          active: Number(data.active) || 0,
-        });
-      } catch (error) {
-        console.log("Dashboard fetch error:", error);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        console.log("Dashboard API error:", response.status);
+        return;
       }
-    }
 
-    getDashboard();
+      const data = await response.json();
+
+      setStats({
+        completed: Number(data.completed) || 0,
+        score: Number(data.score) || 0,
+        active: Number(data.active) || 0,
+      });
+    } catch (error) {
+      console.log("Dashboard fetch error:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [isLoaded, isSignedIn, getToken]);
+
+  useEffect(() => {
+    getDashboard();
+  }, [getDashboard]);
+
+  useEffect(() => {
+    const refresh = () => {
+      getDashboard();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    const interval = window.setInterval(() => {
+      getDashboard();
+    }, 30000);
+
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(interval);
+    };
+  }, [getDashboard]);
 
   const score = Math.min(Math.max(stats.score, 0), 100);
 
@@ -333,4 +346,3 @@ export default function DashboardMain() {
     </main>
   );
 }
-
